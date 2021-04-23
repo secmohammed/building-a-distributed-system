@@ -2,6 +2,8 @@ package registry
 
 import (
     "encoding/json"
+    "fmt"
+    "io/ioutil"
     "log"
     "net/http"
     "sync"
@@ -27,6 +29,18 @@ func (r *registry) add(reg Registration) error {
     return nil
 }
 
+func (r *registry) remove(url string) error {
+    for i := range r.registrations {
+        if r.registrations[i].ServiceURL == url {
+            r.mutex.Lock()
+            r.registrations = append(r.registrations[:i], r.registrations[i+1:]...)
+            r.mutex.Unlock()
+            return nil
+        }
+    }
+    return fmt.Errorf("Service at URL %v not found", url)
+}
+
 //Service is used as an empty struct to attach serveHttp to the registered service only.
 type Service struct{}
 
@@ -47,6 +61,22 @@ func (s Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         if err != nil {
             log.Println(err)
             w.WriteHeader(http.StatusBadRequest)
+            return
+        }
+    case http.MethodDelete:
+        payload, err := ioutil.ReadAll(r.Body)
+        if err != nil {
+            log.Println(err)
+            w.WriteHeader(http.StatusInternalServerError)
+            return
+        }
+        url := string(payload)
+        log.Printf("Removing service at URL: %v", url)
+        err = reg.remove(url)
+        if err != nil {
+            log.Println(err)
+            w.WriteHeader(http.StatusInternalServerError)
+
             return
         }
     default:
