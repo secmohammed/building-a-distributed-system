@@ -25,6 +25,8 @@ func main() {
         registry.GradingService,
     }
     r.ServiceUpdateURL = r.ServiceURL + "/services"
+    r.HeartbeatURL = r.ServiceURL + "/heartbeat"
+
     ctx, err := service.Start(
         context.Background(),
         host,

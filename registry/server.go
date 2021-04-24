@@ -8,6 +8,7 @@ import (
     "log"
     "net/http"
     "sync"
+    "time"
 )
 
 //ServerPort is use to define server port
@@ -127,6 +128,47 @@ func (r *registry) remove(url string) error {
 //Service is used as an empty struct to attach serveHttp to the registered service only.
 type Service struct{}
 
+func (r *registry) heartbeat(freq time.Duration) {
+    for {
+        var wg sync.WaitGroup
+        for _, reg := range r.registrations {
+            wg.Add(1)
+            go func(reg Registration) {
+                defer wg.Done()
+                success := true
+                for attempts := 0; attempts < 3; attempts++ {
+                    res, err := http.Get(reg.HeartbeatURL)
+                    if err != nil {
+                        log.Println(err)
+                        return
+                    } else if res.StatusCode == http.StatusOK {
+                        log.Printf("heartbeat check passed for %v", reg.ServiceName)
+                        if !success {
+                            r.add(reg)
+                        }
+                        break
+                    }
+                    log.Printf("Heartbeat check failed for %v", reg.ServiceName)
+                    if success {
+                        success = false
+                        r.remove(reg.ServiceURL)
+                    }
+                    time.Sleep(1 * time.Second)
+                }
+            }(reg)
+            wg.Wait()
+            time.Sleep(freq)
+        }
+    }
+}
+
+var once sync.Once
+
+func SetupRegistryService() {
+    once.Do(func() {
+        go reg.heartbeat(time.Second * 3)
+    })
+}
 func (s Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     log.Println("Request recieved")
     switch r.Method {
